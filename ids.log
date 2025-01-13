@@ -1,5 +1,0 @@
-2025-01-13 10:56:32 - INFO - Starting report generation
-2025-01-13 10:56:32 - ERROR - Error retrieving open ports: 'charmap' codec can't decode byte 0x90 in position 79: character maps to <undefined>
-2025-01-13 10:56:32 - INFO - Properties retrieved for C:\Windows\System32\drivers\etc\hosts
-2025-01-13 10:56:32 - ERROR - Error retrieving properties for C:\Windows\System32\config\SAM: [WinError 5] Accès refusé: 'C:\\Windows\\System32\\config\\SAM'
-2025-01-13 10:56:32 - INFO - Report saved to C:\Users\yanic\Desktop\Yanice_Ynov_B2\TP3_Dev_IDS\db.json

@@ -22,7 +22,7 @@ console.setFormatter(formatter)
 logging.getLogger().addHandler(console)
 
 # Liste des fichiers à surveiller
-FILES_TO_MONITOR = [r"C:\Windows\System32\drivers\etc\hosts", r"C:\Windows\System32\config\SAM"]
+FILES_TO_MONITOR = [r"C:\Windows\System32\drivers\etc\hosts"]
 
 # Chemin de sortie
 OUTPUT_FILE = r"C:\Users\yanic\Desktop\Yanice_Ynov_B2\TP3_Dev_IDS\db.json"
