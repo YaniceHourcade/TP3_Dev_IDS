@@ -1,19 +1,36 @@
 import os
-import hashlib
-import json
+import stat
 import time
-import subprocess
-import platform
+import json
+import argparse
 import logging
+import hashlib
+import platform
+import subprocess
 
-# Configuration du système de log
-LOG_FILE = "ids.log"
+file_paths = ['/etc/shadow', '/etc/passwd', '/etc/group']
+OUTPUT_FILE = "/var/ids/db.json"
+LOG_FILE = "/var/log/ids/ids.log"
 
+# Liste pour stocker les propriétés des fichiers
+file_properties_list = []
+
+# Parseur d'arguments en ligne de commande
+parser = argparse.ArgumentParser(
+    description='Document d\'aide',
+    epilog="Fin de l'aide"
+)
+parser.add_argument('-v', '--version', action='version',
+                    version='%(prog)s 1.0')
+parser.add_argument('command', choices=['build', 'check'], help="Commande à exécuter", nargs='?')
+args = parser.parse_args()
+
+# Configuration des logs
 logging.basicConfig(
-    filename=LOG_FILE,                  # Fichier où les logs seront écrits
-    level=logging.DEBUG,                # Niveau de log (INFO, WARNING, ERROR)
-    format="%(asctime)s - %(levelname)s - %(message)s",  # Format des messages de log
-    datefmt="%Y-%m-%d %H:%M:%S"         # Format de la date
+    filename=LOG_FILE,
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
@@ -21,13 +38,7 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 console.setFormatter(formatter)
 logging.getLogger().addHandler(console)
 
-# Liste des fichiers à surveiller
-FILES_TO_MONITOR = [r"C:\Windows\System32\drivers\etc\hosts"]
-
-# Chemin de sortie
-OUTPUT_FILE = r"C:\Users\yanic\Desktop\Yanice_Ynov_B2\TP3_Dev_IDS\db.json"
-
-# Fonction pour calculer les hashes d'un fichier
+# Fonction pour calculer les hachages des fichiers
 def compute_hashes(file_path):
     try:
         hashes = {"MD5": None, "SHA256": None, "SHA512": None}
@@ -38,7 +49,7 @@ def compute_hashes(file_path):
             hashes["SHA512"] = hashlib.sha512(data).hexdigest()
         return hashes
     except (FileNotFoundError, PermissionError) as e:
-        logging.error(f"Error computing hashes for {file_path}: {e}")
+        logging.error(f"Erreur lors du calcul des hachages pour {file_path}: {e}")
         return {"error": str(e)}
 
 # Fonction pour obtenir les propriétés d'un fichier
@@ -54,62 +65,85 @@ def get_file_properties(file_path):
             "group": get_group(file_path),
         }
         properties.update(compute_hashes(file_path))
-        logging.info(f"Properties retrieved for {file_path}")
+        logging.info(f"Propriétés récupérées pour {file_path}")
         return properties
     except (FileNotFoundError, PermissionError) as e:
-        logging.error(f"Error retrieving properties for {file_path}: {e}")
+        logging.error(f"Erreur lors de la récupération des propriétés pour {file_path}: {e}")
         return {"error": str(e)}
 
-# Fonction pour obtenir le propriétaire d'un fichier (compatible Windows)
+# Fonction pour obtenir le propriétaire du fichier
 def get_owner(file_path):
-    if platform.system() == "Windows":
-        return os.getlogin()
-    else:
-        import pwd
-        return pwd.getpwuid(os.stat(file_path).st_uid).pw_name
+    import pwd
+    return pwd.getpwuid(os.stat(file_path).st_uid).pw_name
 
-# Fonction pour obtenir le groupe d'un fichier (compatible Windows)
+# Fonction pour obtenir le groupe du fichier
 def get_group(file_path):
-    if platform.system() == "Windows":
-        return "N/A"  # Les groupes ne sont pas directement accessibles sous Windows sans modules supplémentaires
-    else:
-        import grp
-        return grp.getgrgid(os.stat(file_path).st_gid).gr_name
+    import grp
+    return grp.getgrgid(os.stat(file_path).st_gid).gr_name
 
-# Fonction pour obtenir les ports TCP/UDP en écoute
+# Fonction pour obtenir les ports TCP/UDP ouverts
 def get_open_ports():
     try:
-        if platform.system() == "Windows":
-            result = subprocess.check_output("netstat -an", text=True, shell=True)
-        else:
-            result = subprocess.check_output(["ss", "-tuln"], text=True)
-            logging.info("Open ports retrieved successfully")
+        result = subprocess.check_output(["ss", "-tuln"], text=True)
+        logging.info("Ports ouverts récupérés avec succès")
         return result.strip().split("\n")
     except Exception as e:
-        logging.error(f"Error retrieving open ports: {e}")
+        logging.error(f"Erreur lors de la récupération des ports ouverts: {e}")
         return {"error": str(e)}
 
-# Fonction principale
+# Fonction pour générer et sauvegarder l'état actuel (commande build)
 def generate_report():
-    logging.info("Starting report generation")
+    logging.info("Démarrage de la génération du rapport")
     report = {
         "build_time": time.ctime(),
         "files": [],
         "open_ports": get_open_ports(),
     }
 
-    for file_path in FILES_TO_MONITOR:
+    for file_path in file_paths:
         report["files"].append(get_file_properties(file_path))
 
-     # Sauvegarder dans le fichier JSON
+    # Sauvegarder le rapport dans un fichier JSON
     try:
         os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
         with open(OUTPUT_FILE, "w") as json_file:
             json.dump(report, json_file, indent=4)
-        logging.info(f"Report saved to {OUTPUT_FILE}")
+        logging.info(f"Rapport sauvegardé dans {OUTPUT_FILE}")
     except Exception as e:
-        logging.error(f"Error saving report: {e}")
+        logging.error(f"Erreur lors de la sauvegarde du rapport: {e}")
 
-# Exécution
+# Fonction pour vérifier si l'état a changé (commande check)
+def check_state():
+    try:
+        with open(OUTPUT_FILE, "r") as json_file:
+            stored_state = json.load(json_file)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.error(f"Erreur lors du chargement de l'état sauvegardé: {e}")
+        return {"state": "divergent", "error": str(e)}
+
+    # Génération de l'état actuel
+    current_report = {
+        "build_time": time.ctime(),
+        "files": [],
+        "open_ports": get_open_ports(),
+    }
+
+    for file_path in file_paths:
+        current_report["files"].append(get_file_properties(file_path))
+
+    # Comparaison des états
+    if current_report == stored_state:
+        return {"state": "ok"}
+    else:
+        return {"state": "divergent", "changes": current_report}
+
+# Exécution du script
 if __name__ == "__main__":
-    generate_report()
+    if args.command == 'build':
+        generate_report()
+    elif args.command == 'check':
+        result = check_state()
+        print(json.dumps(result, indent=4, ensure_ascii=False))
+    else:
+        print("Usage: python ids.py [build|check]")
+        print("Veuillez spécifier une commande valide.")
